@@ -4,27 +4,36 @@
 import math
 import datetime
 from dateutil.parser import parse as date_parse
+import pandas as pd
+from itertools import count
 
-from rating_api.tools import api_call, base_url
+from rating_api.tools import api_call
 
 def get_tournaments(page=None):
-    url = base_url + "tournaments.json"
+    url = "tournaments.json"
     if page:
         url += "/?page={}".format(page)
-    return api_call(url)
+    parsed_json = api_call(url)
+    return pd.json_normalize(parsed_json["items"])
 
+def next_tournaments_df():
+    """Функция-генератор, получающая датафрейм из следующей по порядку страницы сайта рейтинга."""
+    for page in count(1):
+        page_df = get_tournaments(page=page)
+        if not page_df.size:
+            return
+        yield page_df
 
+# Функция получает датафрейм со всеми .
 def get_all_tournaments():
-    all_tournaments = []
-    page = 1
-    while True:
-        next_page = get_tournaments(page=page)
-        if not next_page:
-            break
-        all_tournaments += next_page
-        page += 1
-    return all_tournaments
+    """Функция, получающая датафрейм со всеми турнирами сайта рейтинга."""
+    return pd.concat([df for df in next_tournaments_df()])
 
+# Функция получает данные по конкретному турниру.
+def get_tournament_info(tournament_id):
+    return pd.json_normalize(
+        api_call("tournaments/{}/list".format(tournament_id))
+    )
 
 def get_tournament_results(tournament_id, recaps=False, rating=False, mask=False):
     url = f"{base_url}/tournaments/{tournament_id}/results.json" \

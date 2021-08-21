@@ -4,8 +4,6 @@
 import requests
 import json
 
-base_url = "https://rating.chgk.info/api/"
-
-def api_call(url):
-    response = requests.get(url)
+def api_call(url, base_url = "https://rating.chgk.info/api/"):
+    response = requests.get(base_url + url)
     return json.loads(response.content.decode("UTF-8"))
