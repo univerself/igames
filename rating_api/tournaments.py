@@ -14,7 +14,22 @@ def get_tournaments(page=None):
     if page:
         url += "/?page={}".format(page)
     parsed_json = api_call(url)
-    return pd.json_normalize(parsed_json["items"])
+    df = pd.json_normalize(parsed_json["items"])
+    if not df.columns.size:
+        return df
+    
+    # При индексировании через список преобразование дат пытается найти год-месяц-день, которых нет.
+    # Поэтому обработаем колонки в цикле.
+    for date_col in ["date_start", "date_end", "date_archived_at"]:
+        df.loc[:, date_col] = pd.to_datetime(df.loc[:, date_col] , errors='coerce')
+    df.loc[:, "archive"] = (df.loc[:, "archive"] == '1')
+    df = df.astype({
+        'idtournament': 'int32', 
+        "name": "string", 
+        "type_name": "category",
+        "archive": "boolean"
+    })
+    return df
 
 def next_tournaments_df():
     """Функция-генератор, получающая датафрейм из следующей по порядку страницы сайта рейтинга."""
@@ -24,7 +39,6 @@ def next_tournaments_df():
             return
         yield page_df
 
-# Функция получает датафрейм со всеми .
 def get_all_tournaments():
     """Функция, получающая датафрейм со всеми турнирами сайта рейтинга."""
     return pd.concat([df for df in next_tournaments_df()])
