@@ -9,23 +9,43 @@ from itertools import count
 
 from rating_api.tools import api_call
 
-def to_tournament_df(parsed_json, long_name = None, tournament_in_rating = None):
+def to_tournament_df(parsed_json):
     df = pd.json_normalize(parsed_json)
     if df.empty:
         return df
-    df.fillna({"tour_count": 0, 
+    df = df.assign(date_start=pd.to_datetime(df["date_start"], errors='coerce'),
+                   date_end=pd.to_datetime(df["date_end"], errors='coerce'),
+                   archive=(df["archive"]  == '1'),
+                   date_archived_at=pd.to_datetime(df["date_archived_at"], errors='coerce'))
+    if "long_name" not in df.columns:
+        # Считаем отсутствие полного названия признаком "краткого" формата датафрейма, заполняем колонки пустыми значениями
+        df = df.assign(long_name=df["name"],
+                       town=None,
+                       tour_count=0,
+                       tour_questions=0,
+                       tour_ques_per_tour=0,
+                       questions_total=0,
+                       main_payment_value=0.0,
+                       main_payment_currency=None,
+                       discounted_payment_value=0.0,
+                       discounted_payment_currency=None,
+                       discounted_payment_reason=None,
+                       tournament_in_rating=None,
+                       date_requests_allowed_to=None,
+                       comment=None,
+                       site_url=None,
+                       archive=(df["archive"]  == '1'),
+                       date_archived_at=pd.to_datetime(df["date_archived_at"], errors='coerce'),
+                       db_tags=None)
+    else:
+        df = df.assign(tournament_in_rating=(df["tournament_in_rating"]  == '1'))        
+        df.fillna({"tour_count": 0, 
                "tour_questions": 0, 
                "tour_ques_per_tour": 0,
                "questions_total": 0,
                "main_payment_value": 0,
                "discounted_payment_value": 0},
               inplace = True)
-    df = df.assign(long_name=df[long_name if long_name else "long_name"],
-                   date_start=pd.to_datetime(df["date_start"], errors='coerce'),
-                   date_end=pd.to_datetime(df["date_end"], errors='coerce'),
-                   tournament_in_rating=tournament_in_rating,
-                   archive=(df["archive"]  == '1'),
-                   date_archived_at=pd.to_datetime(df["date_archived_at"], errors='coerce'))
         
     df = df.astype({
         "idtournament": "int32", 
@@ -46,8 +66,10 @@ def to_tournament_df(parsed_json, long_name = None, tournament_in_rating = None)
         "date_requests_allowed_to": "datetime64[ns]", 
         "comment": "string", 
         "site_url": "string", 
-        "archive": "boolean"
+        "archive": "boolean", 
+        "db_tags": "string"
     })
+    df.type_name = df.type_name.cat.set_categories(["Обычный", "Синхрон"])
     return df
 
 def get_tournaments(page=None):
@@ -55,53 +77,7 @@ def get_tournaments(page=None):
     if page:
         url += "/?page={}".format(page)
     parsed_json = api_call(url)
-    df = pd.json_normalize(parsed_json["items"])
-    if df.empty:
-        return df
-    
-    df = df.assign(long_name=df["name"],
-                   town=None,
-                   date_start=pd.to_datetime(df["date_start"], errors='coerce'),
-                   date_end=pd.to_datetime(df["date_end"], errors='coerce'),
-                   tour_count=0,
-                   tour_questions=0,
-                   tour_ques_per_tour=0,
-                   questions_total=0,
-                   main_payment_value=0.0,
-                   main_payment_currency=None,
-                   discounted_payment_value=0.0,
-                   discounted_payment_currency=None,
-                   discounted_payment_reason=None,
-                   tournament_in_rating=None,
-                   date_requests_allowed_to=None,
-                   comment=None,
-                   site_url=None,
-                   archive=(df["archive"]  == '1'),
-                   date_archived_at=pd.to_datetime(df["date_archived_at"], errors='coerce'),
-                   db_tags=None)
-    df = df.astype({
-        "idtournament": "int32", 
-        "name": "string", 
-        "long_name": "string", 
-        "town": "string",
-        "type_name": "category",
-        "tour_count": "int32", 
-        "tour_questions": "int32", 
-        "tour_ques_per_tour": "string", 
-        "questions_total": "int32", 
-        "main_payment_value": "float64", 
-        "main_payment_currency": "string",
-        "discounted_payment_value": "float64", 
-        "discounted_payment_currency": "string",
-        "discounted_payment_reason": "string", 
-        "tournament_in_rating": "boolean", 
-        "date_requests_allowed_to": "datetime64[ns]", 
-        "comment": "string", 
-        "site_url": "string", 
-        "archive": "boolean"
-    })
-    df.type_name = df.type_name.cat.set_categories(["Обычный", "Синхрон"])
-    df.index = df.idtournament
+    df = to_tournament_df(parsed_json["items"])
     return df
 
 def next_tournaments_df():
@@ -119,8 +95,7 @@ def get_all_tournaments():
 def get_tournament_info(tournament_id):
     """Функция, получающая данные по конкретному турниру."""
     res = api_call(f"tournaments/{tournament_id}")
-    df = to_tournament_df(res, 
-                          tournament_in_rating = lambda x: x['tournament_in_rating'] == '1')
+    df = to_tournament_df(res)
     return df
 
 def update_tournament_info(tournaments, tournament_id):
