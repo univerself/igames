@@ -9,6 +9,47 @@ from itertools import count
 
 from rating_api.tools import api_call
 
+def to_tournament_df(parsed_json, long_name = None, tournament_in_rating = None):
+    df = pd.json_normalize(parsed_json)
+    if df.empty:
+        return df
+    df.fillna({"tour_count": 0, 
+               "tour_questions": 0, 
+               "tour_ques_per_tour": 0,
+               "questions_total": 0,
+               "main_payment_value": 0,
+               "discounted_payment_value": 0},
+              inplace = True)
+    df = df.assign(long_name=df[long_name if long_name else "long_name"],
+                   date_start=pd.to_datetime(df["date_start"], errors='coerce'),
+                   date_end=pd.to_datetime(df["date_end"], errors='coerce'),
+                   tournament_in_rating=tournament_in_rating,
+                   archive=(df["archive"]  == '1'),
+                   date_archived_at=pd.to_datetime(df["date_archived_at"], errors='coerce'))
+        
+    df = df.astype({
+        "idtournament": "int32", 
+        "name": "string", 
+        "long_name": "string", 
+        "town": "string",
+        "type_name": "category",
+        "tour_count": "int32", 
+        "tour_questions": "int32", 
+        "tour_ques_per_tour": "string", 
+        "questions_total": "int32", 
+        "main_payment_value": "float64", 
+        "main_payment_currency": "string",
+        "discounted_payment_value": "float64", 
+        "discounted_payment_currency": "string",
+        "discounted_payment_reason": "string", 
+        "tournament_in_rating": "boolean", 
+        "date_requests_allowed_to": "datetime64[ns]", 
+        "comment": "string", 
+        "site_url": "string", 
+        "archive": "boolean"
+    })
+    return df
+
 def get_tournaments(page=None):
     url = "tournaments.json"
     if page:
@@ -78,20 +119,16 @@ def get_all_tournaments():
 def get_tournament_info(tournament_id):
     """Функция, получающая данные по конкретному турниру."""
     res = api_call(f"tournaments/{tournament_id}")
-    if not len(res):
-        return {}
-    res = res[0]
-    res["tournament_in_rating"] = (res["tournament_in_rating"] == '1')
-    return res
+    df = to_tournament_df(res, 
+                          tournament_in_rating = lambda x: x['tournament_in_rating'] == '1')
+    return df
 
 def update_tournament_info(tournaments, tournament_id):
-    """Функция, обновляющая данные по конкретному турниру в общем датафрейме турниров."""
-    tournament_info = get_tournament_info(tournament_id)
-    for col in tournament_info:
-        try:
-            tournaments.at[(int(tournament_info["idtournament"]), col)] = tournament_info[col]
-        except:
-            continue
+    old_rows_index = tournaments[tournaments["idtournament"] == tournament_id].index
+    if not old_rows_index.empty:
+        tournaments.drop(old_rows_index, inplace = True)
+    tournaments = tournaments.append(get_tournament_info(tournament_id), ignore_index=True)
+    return tournaments
 
 def get_tournament_results(tournament_id, recaps=False, rating=False, mask=False):
     url = f"{base_url}/tournaments/{tournament_id}/results.json" \
