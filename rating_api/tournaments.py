@@ -98,11 +98,24 @@ def get_tournament_info(tournament_id):
     df = to_tournament_df(res)
     return df
 
+def get_tournaments_info(tournaments_id):
+    """Функция, получающая данные по списку конкретных турниров."""
+    return pd.concat([
+        get_tournament_info(tournament_id) for tournament_id in tournaments_id
+    ])
+
 def update_tournament_info(tournaments, tournament_id):
     old_rows_index = tournaments[tournaments["idtournament"] == tournament_id].index
     if not old_rows_index.empty:
         tournaments.drop(old_rows_index, inplace = True)
     tournaments = tournaments.append(get_tournament_info(tournament_id), ignore_index=True)
+    return tournaments
+
+def update_tournaments_info(tournaments, tournaments_id):
+    old_rows_index = tournaments[tournaments.idtournament.isin(tournaments_id)].index
+    if not old_rows_index.empty:
+        tournaments.drop(old_rows_index, inplace = True)
+    tournaments = tournaments.append(get_tournaments_info(tournaments_id), ignore_index=True)
     return tournaments
 
 def get_tournament_results(tournament_id, recaps=False, rating=False, mask=False):
